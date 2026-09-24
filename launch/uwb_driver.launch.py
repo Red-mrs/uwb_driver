@@ -14,6 +14,14 @@ PKG_NAME = "uwb_driver"
 STANDALONE_EXECUTABLE = "uwb_driver_node"
 
 
+def default_serial():
+    # The serial belongs to the drone, not to the package, so it comes from the
+    # environment (UWB_SERIAL in .bashrc) rather than from the shipped config.
+    # An unset variable leaves the argument empty, which keeps the config file in
+    # charge.
+    return os.getenv('UWB_SERIAL', '')
+
+
 def generate_launch_description():
     ld = launch.LaunchDescription()
 
@@ -27,8 +35,9 @@ def generate_launch_description():
         description='Path to a node parameter file.'
     ))
     ld.add_action(DeclareLaunchArgument(
-        'serial_number', default_value='',
-        description='USB serial number of the module. Overrides usb_serial from the config file.'
+        'serial_number', default_value=default_serial(),
+        description='USB serial number of the module. Defaults to $UWB_SERIAL, and overrides '
+                    'usb_serial from the config file when set to a non-empty value.'
     ))
     ld.add_action(DeclareLaunchArgument(
         'container', default_value='',
