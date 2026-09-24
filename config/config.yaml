@@ -1,0 +1,34 @@
+# Parameters are read as node parameters, so the ROS 2 parameter-file format
+# applies: a top-level node name (or ** for every node), then "ros__parameters".
+# Run `ros2 param dump /<container>/<node>` to see what the node resolved.
+
+uwb_driver:
+  ros__parameters:
+
+    # USB serial number of the module, as shown by
+    #   udevadm info -q property -n /dev/ttyACM0 | grep ID_SERIAL_SHORT
+    # With an empty value the driver logs the serial numbers it can see and keeps
+    # looking, which is the quickest way to find the right one on a fresh setup.
+    usb_serial: ""
+
+    # frame_id stamped on every published message.
+    frame_id: "uwb"
+
+    # Topic the ranges are published on, relative to the node's namespace, so in
+    # a container it lands under the container's namespace. Set to "" to
+    # advertise no topic at all.
+    topic: "uwb/distance"
+
+    # Logs every byte that could not be turned into an LLCP message, at DEBUG
+    # level. Raise the level with:
+    #   ros2 param set /<node> debug true
+    #   ros2 service call /<node>/set_logger_level ...
+    debug: false
+
+    # How often to look for the device when it is not connected (Hz). Each scan
+    # only walks /sys/class/tty.
+    retry_rate_hz: 1.0
+
+    # How often to print per-link message counts (Hz). Suppressed while nothing
+    # has been received, so an unplugged module stays quiet.
+    stats_rate_hz: 1.0
