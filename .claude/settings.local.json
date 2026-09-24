@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//home/radomir/**)",
-      "Read(//opt/ros/**)",
-      "Read(//home/radomir/git/**)"
-    ]
-  }
-}
