@@ -89,6 +89,138 @@ ros2 launch uwb_driver uwb_driver.launch.py serial_number:=205F33524E31
 > [!NOTE]
 > The module also enumerates as a USB flash drive exposing `CONFIG.TXT`. That file needs `usbvcp 2` and `uart 1`;
 > otherwise the module does not put LLCP on the port and the driver connects but decodes nothing.
+> See [Device CLI](#device-cli) for how to set either.
+
+## Device CLI
+
+The module runs a command line on the same CDC-ACM port the driver reads. It is where the UWB channel, TX power,
+node ID and output routing are set; everything it can change is listed under
+[Device parameters](#device-parameters), and anything else means reflashing.
+
+### Opening the console
+
+Stop the driver first — it opens the port `O_RDWR`, so a terminal attached at the same time competes with it for
+the module's bytes.
+
+```bash
+pkill -f uwb_driver_node          # or just Ctrl-C the launch
+screen /dev/ttyACM0 115200
+```
+
+The baud rate is decoration: this is USB CDC-ACM and the setting is never applied to anything. To get your shell
+back without hanging up the port, `Ctrl-A` then `d` detaches the `screen` session. For any terminal, turn **local
+echo off**, which is what the device expects — it handles the erase character itself, so with local echo on,
+backspace leaves the line visibly scrambled.
+
+Nothing is printed when you connect: the prompt is written once after the port is opened and not repeated until the
+module resets. Press Enter for it.
+
+```
+uvdar> get usbvcp
+usbvcp 1  # debug
+uvdar> status
+runtime:
+  deviceid                   0x0001
+  frequency                  30
+  ...
+  chan                       5
+  txpower                    0x30
+  # unsaved changes - `save` to write CONFIG.TXT
+uvdar>
+```
+
+Command names are case-insensitive, `?` is the same as `help`, and Ctrl-C abandons whatever you are mid-way through
+typing.
+
+### Commands
+
+| Command | |
+|---|---|
+| `help` | Command list, then every parameter with its firmware default. `?` does the same. |
+| `status` | Runtime values, with a marker if they differ from what is on flash. |
+| `default` | The values compiled into the firmware — unaffected by `set`. |
+| `get <param>` | One parameter. A bare `get` is the same as `status`. |
+| `set <param> <value>` | Change one parameter. One parameter per command. |
+| `save` | Write the runtime values to `CONFIG.TXT`, so they survive a reboot. |
+| `reboot` | Reset the module. |
+
+`set` takes effect on the running module as far as it can; `save` is only what makes the change survive a
+reboot. The reply echoes the parameter in the form `get` prints it, so `set txpower 52` answers
+`txpower 0x34`:
+
+```
+uvdar> set chan 9
+UWB: chan 9, txpower 0x30
+chan 9
+uvdar> save
+saving 398 bytes...
+uvdar>
+```
+
+> [!NOTE]
+> That `UWB: chan 9, ...` line is the firmware's debug output, and it reaches this port only while `usbvcp` is
+> `debug` — which is what you need anyway to see the prompt usefully. In `ros` mode the CLI still answers, but
+> `printf` goes elsewhere. If the module stops responding to your eyes entirely, `set usbvcp debug` blind and it
+> comes back. Debug text and CLI replies travel on separate buffers, so expect the two to interleave rather than
+> always arrive in the order above.
+
+Values are decimal or `0x` hex; `usbvcp` and `uart` also take `none` / `debug` / `ros`, booleans `0` / `1` / `off`
+/ `on` / `no` / `yes`, and `pattern` a bit string (`set pattern 0110`). Anything out of range is refused with the
+allowed span, `chan` takes 5 or 9 and nothing between them, and text following a number is read as a typo rather
+than ignored — `set chan 9 now` fails instead of silently setting 9.
+
+### Device parameters
+
+Names are exactly as `status` prints them, in that order. Not to be confused with the node's own
+[Parameters](#parameters), which are a separate thing set in `config/config.yaml`.
+
+| Parameter | Default | |
+|---|---|---|
+| `deviceid` | `0x0001` | The module's own node ID in the ranging network. Has to differ between modules that range together, and has to be set before boot: the ranging task reads it once when it starts. `set` stores it and says so; `reboot` applies it. Only the low byte reaches the ranging protocol, so IDs that differ in the high byte alone collide. |
+| `frequency` | `30` | UVDAR blink rate, in pattern bits per second. |
+| `pattern` | `0101` | UVDAR LED bit pattern, up to 64 bits. |
+| `usbvcp` | `1` `debug` | What the USB port carries: `none`, `debug` (printf text) or `ros` (the LLCP binary stream this driver decodes). |
+| `uart` | `2` `ros` | The same choice for the 2 Mbaud UART on the header. |
+| `rssi` | `0` | Log the DW3000's channel impulse response diagnostics — a per-path peak readout, useful when a distance looks wrong. This firmware does not put an RSSI value in the range reports. |
+| `round_robin` | `1` † | Rotate the initiator role between nodes instead of holding it. |
+| `tx_ant_dly` | `16385` | Transmit antenna delay, in UUS (≈ 15.65 ns). A wrong value is a constant range offset. |
+| `rx_ant_dly` | `16385` | Receive antenna delay, same units and same effect. |
+| `poll_tx_to_resp_rx_dly_uus` | `240` † | When the initiator opens its receiver after sending a poll. |
+| `resp_rx_timeout_uus` | `2300` † | How long the initiator waits for the response before giving up on the round. |
+| `poll_rx_to_resp_tx_dly_uus` | `1000` † | How long the responder takes to prepare its response. |
+| `delay_between_nodes` | `1000` † | Per-node slot offset within one ranging round. |
+| `rng_delay_ms` | `10` † | Delay between ranging rounds — the main lever on ranging rate. |
+| `loneliness_dly_ms` | `200` † | How long a module goes without hearing a poll before it takes the initiator role. |
+| `poll_limit` | `5` † | Polls attempted before giving up the initiator role. |
+| `chan` | `5` | DW3xxx RF channel: 5 or 9, nothing else. Must be identical on every module that ranges with itself, so a module left on the other channel sees no peers at all. |
+| `txpower` | `0x30` | TX power, as the single byte the driver register is built from. |
+
+> [!WARNING]
+> **Eight of these — the ones marked † — are stored, echoed back, and written to `CONFIG.TXT`, but the firmware
+> does not act on them:** the ranging code reads their compiled-in values instead. `set` on them changes what you
+> see, not what the module does, so treat them as read-only until a firmware build wires them up. Everything else
+> applies live, `deviceid` excepted.
+>
+> Two of the live ones disturb ranging while it runs. `set chan` reconfigures the radio and the round in flight is
+> lost. After `set tx_ant_dly` / `rx_ant_dly`, the report for the round already in the air can read one wrong
+> distance, off by roughly half the change you just made. Both settle on the next round; neither is a fault.
+
+### Editing `CONFIG.TXT` instead
+
+`CONFIG.TXT` on the mass-storage interface holds what the module loads at boot, `STATUS.TXT` what is running now,
+and both use the same `key value` lines that `get` prints. Editing the file from the PC does work — the module picks
+up the values once the OS has flushed the write, without a reboot, and mirrors the file to flash when the drive is
+ejected — but the CLI is the better tool for a single change: it validates each value before accepting it and
+reports a mistake on the spot. A hand-edited file is parsed as a whole and rejected as a whole, so one typo leaves
+the module running the values it had before, and the only trace is a line on the debug port.
+
+> [!WARNING]
+> The drive is a FAT12 image in RAM that the firmware mirrors into one flash sector, not a real disk, and two
+> things follow. Until that mirror runs the edit lives in RAM, so pulling power without ejecting loses it. And a
+> filesystem driver on the host rewrites the allocation tables as it saves a file, which relocates `CONFIG.TXT` to
+> another cluster and pushes that churn into flash. That last one has bitten this stack before: after the file was
+> edited on a PC, the firmware wrote its `save` to one cluster and read boot values from another, so settings
+> appeared not to persist at all. Read `CONFIG.TXT` from the device freely; edit it from the device.
 
 ## Launch
 
@@ -231,4 +363,4 @@ The vendored LLCP sources are not modified. Binary framing — the module sends 
 BSD 3-Clause. Includes [LLCP](include/uwb_driver/llcp/LLCP_README.md) from the
 [CTU MRS group](http://mrs.felk.cvut.cz/), vendored unmodified.
 
-Maintainers: Jan Vojnar (Fly4Future), Radomír Nový (CTU FEE).
+Maintainers: Radomír Nový (CTU FEE), Jan Vojnar (Fly4Future)
