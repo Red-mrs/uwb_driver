@@ -60,7 +60,7 @@ def launch_setup(context):
 
     node_name = LaunchConfiguration('node_name').perform(context)
     config_path = LaunchConfiguration('config').perform(context)
-    serial_number = LaunchConfiguration('serial_number').perform(context)
+    serial_number = (str)(LaunchConfiguration('serial_number').perform(context))
     container = LaunchConfiguration('container').perform(context)
     standalone = LaunchConfiguration('standalone').perform(context).lower() in ('true', '1', 'yes')
 
