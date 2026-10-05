@@ -87,6 +87,7 @@ def launch_setup(context):
         package=PKG_NAME,
         plugin='uwb_driver::UwbDriverComponent',
         name=node_name,
+        namespace=f'/{uav_name}',
         parameters=parameters,
     )
 
