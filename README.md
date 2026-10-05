@@ -262,14 +262,13 @@ ros2 launch uwb_driver uwb_driver.launch.py container:=/uav/uvdar_container
 Non-positive rates fall back to 1.0 Hz with a warning.
 
 > [!WARNING]
-> Quote the serial number wherever you set it. A value that looks like scientific notation — all digits, then `E`,
-> then digits, as in `206133834E31` — is resolved to a `double` rather than a string, and the node aborts on startup
-> with `parameter 'usb_serial' has invalid type`. This catches both `serial_number:=206133834E31` on the command
-> line and an unquoted `usb_serial: 206133834E31` in a config file. Serials containing a letter other than `E`
-> (`205F33524E31`) happen to survive by accident. Quote it everywhere:
+> Quote the serial number in the YAML config file. An unquoted value that looks like scientific notation — all digits,
+> then `E`, then digits, as in `206133834E31` — is parsed as a `double`, and the node aborts on startup with
+> `parameter 'usb_serial' has invalid type`. The launch file forces `serial_number` to a string, so the command-line
+> launch argument does not need extra quoting:
 >
 > ```bash
-> ros2 launch uwb_driver uwb_driver.launch.py "serial_number:='206133834E31'"
+> ros2 launch uwb_driver uwb_driver.launch.py serial_number:=206133834E31
 > ```
 >
 > ```yaml

@@ -6,6 +6,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.descriptions import ComposableNode
 
 PKG_NAME = "uwb_driver"
@@ -60,7 +61,7 @@ def launch_setup(context):
 
     node_name = LaunchConfiguration('node_name').perform(context)
     config_path = LaunchConfiguration('config').perform(context)
-    serial_number = (str)(LaunchConfiguration('serial_number').perform(context))
+    serial_number = LaunchConfiguration('serial_number').perform(context)
     container = LaunchConfiguration('container').perform(context)
     standalone = LaunchConfiguration('standalone').perform(context).lower() in ('true', '1', 'yes')
 
@@ -70,7 +71,7 @@ def launch_setup(context):
     # takes precedence without the file needing to be re-read.
     parameters = [config_path]
     if serial_number:
-        parameters.append({'usb_serial': serial_number})
+        parameters.append({'usb_serial': ParameterValue(serial_number, value_type=str)})
 
     if standalone:
         return [launch_ros.actions.Node(
