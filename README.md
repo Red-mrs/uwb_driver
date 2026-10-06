@@ -145,17 +145,34 @@ typing.
 | `reboot` | Reset the module. |
 
 `set` takes effect on the running module as far as it can; `save` is only what makes the change survive a
-reboot. The reply echoes the parameter in the form `get` prints it, so `set txpower 52` answers
-`txpower 0x34`:
+reboot. The reply echoes the parameter in the form `get` prints it, and every command closes with a status line:
 
 ```
 uvdar> set chan 9
 UWB: chan 9, txpower 0x30
 chan 9
+rc=0 chan applied
 uvdar> save
 saving 398 bytes...
+rc=1 saved 398 bytes, writing to flash
 uvdar>
 ```
+
+The last line of every reply is `rc=<n> <summary>`, which is what to test if you are scripting the port rather
+than reading it:
+
+| rc | |
+|---|---|
+| `0` | Done, and in force now. |
+| `1` | Done, but not in force yet — `deviceid` needs a `reboot`, and `save` still has its flash write queued. |
+| `< 0` | Nothing changed. The number is the reason: `-3` no such parameter or command, `-4` out of range, `-6` value not parseable, `-8` `CONFIG.TXT` has no room. |
+
+So `set deviceid 0x150` → `rc=1 deviceid: stored, takes effect after reset` means the value is accepted and will
+hold across a `reboot`, but the module is still ranging as its old ID until then. The same command with a bad
+value answers `rc=-4` and changes nothing.
+
+Debug text and CLI replies travel on separate buffers (see below), so read until you see a line starting with
+`rc=` rather than assuming the reply is the last line that arrived.
 
 > [!NOTE]
 > That `UWB: chan 9, ...` line is the firmware's debug output, and it reaches this port only while `usbvcp` is
